@@ -1,4 +1,6 @@
 import json
+import os
+from os.path import basename
 import uuid
 from .models import user
 from .models import UnauthorizedException
@@ -266,3 +268,51 @@ class MultiUserAuthentication(AbstractAuthentication):
     def logout(self):
         session.pop('username', None)
         return redirect("/")
+
+class AbstractDataBackend(object):
+    def list_data_sources(self):
+        raise NotImplementedError
+    
+    def get_data(self, data_url):
+        raise NotImplementedError        
+    
+    def append_data(self, data_url):
+        raise NotImplementedError
+    
+import posixpath
+def user_url_root(data_directory, username):
+    user_directory = safe_url_join(data_directory, username)
+    user_directory = posixpath.abspath(user_directory)
+    if posixpath.basename(user_directory) != username:
+        raise IOError('security error')
+    return user_directory
+    
+def safe_url_join(base_path, paths):
+    proposed_path = posixpath.realpath(posixpath.join(base_path, *paths))
+    if not proposed_path.startswith(base_path):
+        raise IOError('security error')
+    return proposed_path
+
+def safe_user_url_join(data_directory, username, path):
+    user_path = user_url_root(data_directory, username)
+    return safe_url_join(user_path, path)
+
+class HDF5DataBackend(AbstractDataBackend):
+    def __init__(self, data_directory):
+        self.data_directory = data_directory
+        try:
+            from arraymanagement.client import ArrayClient
+            self.client = ArrayClient(self.data_directory, 
+                                      configname="bokeh.server.hdf5_backend_config")
+        except Exception as e:
+            logger.exception(e)
+            logger.info("error importing arraymanagement")
+            logger.info("install arraymanagement from https://github.com/continuumio/ArrayManagement")
+            logger.info("or procede without remote data capabilities")
+
+    def list_data_sources(self):
+        bokehuser = bokeh_app.authentication.current_user()
+        username = bokehuser.username
+        
+        
+        
